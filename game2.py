@@ -9,13 +9,14 @@ pygame.init()
 class Colors:
     BACKGROUND = (15, 15, 35)
     GRID = (30, 30, 50)
-    SNAKE_HEAD = (50, 180, 50)  # Darker green for head
+    SNAKE_HEAD = (50, 180, 50)
     SNAKE_BODY = (50, 200, 100)
     SNAKE_BELLY = (80, 220, 130)
     FOOD = (255, 100, 100)
     FOOD_GLOW = (255, 150, 150)
     TEXT = (240, 240, 240)
     GAME_OVER = (255, 100, 100)
+    WALL_WARNING = (255, 200, 50)
     PARTICLE = (255, 255, 100)
     UI_PANEL = (25, 25, 45)
     EYE_WHITE = (255, 255, 255)
@@ -56,6 +57,12 @@ class ParticleSystem:
             lifetime = random.uniform(30, 60)
             self.particles.append(Particle(x, y, color, velocity, lifetime))
             
+    def add_explosion(self, x, y, color, count=20):
+        for _ in range(count):
+            velocity = [random.uniform(-8, 8), random.uniform(-8, 8)]
+            lifetime = random.uniform(20, 40)
+            self.particles.append(Particle(x, y, color, velocity, lifetime))
+            
     def update(self):
         self.particles = [p for p in self.particles if p.lifetime > 0 and p.size > 0.5]
         for particle in self.particles:
@@ -72,8 +79,10 @@ class Snake:
         self.reset()
         
     def reset(self):
-        self.body = [(15, 10), (14, 10), (13, 10)]
-        self.direction = (1, 0)
+        start_x = self.grid_width // 2
+        start_y = self.grid_height // 2
+        self.body = [(start_x, start_y), (start_x - 1, start_y), (start_x - 2, start_y)]
+        self.direction = (1, 0)  # Right
         self.next_direction = (1, 0)
         self.grow_pending = 0
         
@@ -92,7 +101,13 @@ class Snake:
         self.direction = self.next_direction
         head_x, head_y = self.body[0]
         dx, dy = self.direction
-        new_head = ((head_x + dx) % self.grid_width, (head_y + dy) % self.grid_height)
+        new_head = (head_x + dx, head_y + dy)
+        
+        # Wall collision detection
+        if (new_head[0] < 0 or new_head[0] >= self.grid_width or 
+            new_head[1] < 0 or new_head[1] >= self.grid_height):
+            return "WALL_COLLISION"
+            
         self.body.insert(0, new_head)
         
         if self.grow_pending > 0:
@@ -100,10 +115,12 @@ class Snake:
         else:
             self.body.pop()
             
+        return "OK"
+        
     def grow(self):
         self.grow_pending += 1
         
-    def check_collision(self):
+    def check_self_collision(self):
         head = self.body[0]
         return head in self.body[1:]
         
@@ -134,7 +151,7 @@ class ModernSnakeGame:
         self.CELL_SIZE = 25
         
         self.screen = pygame.display.set_mode((self.WINDOW_WIDTH, self.WINDOW_HEIGHT))
-        pygame.display.set_caption("Modern Snake Game")
+        pygame.display.set_caption("Snake Game - Wall Collision Mode")
         
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
@@ -149,6 +166,7 @@ class ModernSnakeGame:
         self.move_timer = 0
         self.move_delay = 150
         
+        self.wall_collision_pos = None
         self.background = self.create_gradient_background()
         
     def create_gradient_background(self):
@@ -160,118 +178,54 @@ class ModernSnakeGame:
         return background
         
     def draw_snake_head(self, x, y, direction):
-        """Draw a realistic snake head with eyes, tongue, and scales"""
         pixel_x = x * self.CELL_SIZE
         pixel_y = y * self.CELL_SIZE
         
-        # Snake head shape (ellipse)
         head_rect = pygame.Rect(pixel_x + 2, pixel_y + 2, self.CELL_SIZE - 4, self.CELL_SIZE - 4)
-        
-        # Main head color
         pygame.draw.ellipse(self.screen, Colors.SNAKE_HEAD, head_rect)
         
-        # Head highlight
         highlight_rect = pygame.Rect(pixel_x + 4, pixel_y + 4, self.CELL_SIZE - 12, self.CELL_SIZE // 3)
         pygame.draw.ellipse(self.screen, Colors.SNAKE_BELLY, highlight_rect)
         
-        # Direction-based positioning for eyes and tongue
         center_x = pixel_x + self.CELL_SIZE // 2
         center_y = pixel_y + self.CELL_SIZE // 2
         
-        # Draw eyes based on direction
         eye_size = 4
         pupil_size = 2
         
         if direction == (1, 0):  # Right
             left_eye = (center_x + 3, center_y - 4)
             right_eye = (center_x + 3, center_y + 4)
-            tongue_start = (center_x + self.CELL_SIZE // 2 - 2, center_y)
-            tongue_end = (center_x + self.CELL_SIZE // 2 + 6, center_y)
         elif direction == (-1, 0):  # Left
             left_eye = (center_x - 3, center_y - 4)
             right_eye = (center_x - 3, center_y + 4)
-            tongue_start = (center_x - self.CELL_SIZE // 2 + 2, center_y)
-            tongue_end = (center_x - self.CELL_SIZE // 2 - 6, center_y)
         elif direction == (0, -1):  # Up
             left_eye = (center_x - 4, center_y - 3)
             right_eye = (center_x + 4, center_y - 3)
-            tongue_start = (center_x, center_y - self.CELL_SIZE // 2 + 2)
-            tongue_end = (center_x, center_y - self.CELL_SIZE // 2 - 6)
         else:  # Down
             left_eye = (center_x - 4, center_y + 3)
             right_eye = (center_x + 4, center_y + 3)
-            tongue_start = (center_x, center_y + self.CELL_SIZE // 2 - 2)
-            tongue_end = (center_x, center_y + self.CELL_SIZE // 2 + 6)
         
-        # Draw eyes (white part)
         pygame.draw.circle(self.screen, Colors.EYE_WHITE, left_eye, eye_size)
         pygame.draw.circle(self.screen, Colors.EYE_WHITE, right_eye, eye_size)
-        
-        # Draw pupils (black part)
         pygame.draw.circle(self.screen, Colors.EYE_BLACK, left_eye, pupil_size)
         pygame.draw.circle(self.screen, Colors.EYE_BLACK, right_eye, pupil_size)
         
-        # Draw tongue (forked)
-        pygame.draw.line(self.screen, Colors.TONGUE, tongue_start, tongue_end, 2)
-        
-        # Fork the tongue
-        if direction in [(1, 0), (-1, 0)]:  # Horizontal
-            fork1 = (tongue_end[0], tongue_end[1] - 2)
-            fork2 = (tongue_end[0], tongue_end[1] + 2)
-        else:  # Vertical
-            fork1 = (tongue_end[0] - 2, tongue_end[1])
-            fork2 = (tongue_end[0] + 2, tongue_end[1])
-            
-        pygame.draw.line(self.screen, Colors.TONGUE, tongue_end, fork1, 1)
-        pygame.draw.line(self.screen, Colors.TONGUE, tongue_end, fork2, 1)
-        
-        # Add nostrils
-        nostril_size = 1
-        if direction == (1, 0):  # Right
-            nostril1 = (center_x + 2, center_y - 2)
-            nostril2 = (center_x + 2, center_y + 2)
-        elif direction == (-1, 0):  # Left
-            nostril1 = (center_x - 2, center_y - 2)
-            nostril2 = (center_x - 2, center_y + 2)
-        elif direction == (0, -1):  # Up
-            nostril1 = (center_x - 2, center_y - 2)
-            nostril2 = (center_x + 2, center_y - 2)
-        else:  # Down
-            nostril1 = (center_x - 2, center_y + 2)
-            nostril2 = (center_x + 2, center_y + 2)
-            
-        pygame.draw.circle(self.screen, (30, 30, 30), nostril1, nostril_size)
-        pygame.draw.circle(self.screen, (30, 30, 30), nostril2, nostril_size)
-        
     def draw_snake_body(self, x, y, index):
-        """Draw snake body segments with scale pattern"""
         pixel_x = x * self.CELL_SIZE
         pixel_y = y * self.CELL_SIZE
         
-        # Body segment
         body_rect = pygame.Rect(pixel_x + 3, pixel_y + 3, self.CELL_SIZE - 6, self.CELL_SIZE - 6)
-        
-        # Gradient effect
         intensity = max(0.4, 1 - (index / len(self.snake.body)) * 0.6)
         body_color = tuple(max(0, min(255, int(c * intensity))) for c in Colors.SNAKE_BODY)
         
         pygame.draw.ellipse(self.screen, body_color, body_rect)
-        
-        # Scale pattern
-        scale_color = tuple(max(0, min(255, int(c * 0.8))) for c in body_color)
-        for i in range(3):
-            for j in range(3):
-                scale_x = pixel_x + 5 + i * 6
-                scale_y = pixel_y + 5 + j * 6
-                if scale_x < pixel_x + self.CELL_SIZE - 3 and scale_y < pixel_y + self.CELL_SIZE - 3:
-                    pygame.draw.circle(self.screen, scale_color, (scale_x, scale_y), 1)
-        
+                
     def draw_snake(self):
-        """Draw the entire snake with realistic head"""
         for i, (x, y) in enumerate(self.snake.body):
-            if i == 0:  # Head
+            if i == 0:
                 self.draw_snake_head(x, y, self.snake.direction)
-            else:  # Body
+            else:
                 self.draw_snake_body(x, y, i)
                 
     def draw_food(self):
@@ -279,17 +233,14 @@ class ModernSnakeGame:
         center_x = x * self.CELL_SIZE + self.CELL_SIZE // 2
         center_y = y * self.CELL_SIZE + self.CELL_SIZE // 2
         
-        # Pulsing effect
         pulse = abs(math.sin(pygame.time.get_ticks() * 0.005)) * 3 + 2
         
-        # Glow effect
         glow_surface = pygame.Surface((self.CELL_SIZE + 20, self.CELL_SIZE + 20), pygame.SRCALPHA)
         pygame.draw.circle(glow_surface, (*Colors.FOOD_GLOW, 100), 
                          (self.CELL_SIZE//2 + 10, self.CELL_SIZE//2 + 10), 
                          self.CELL_SIZE//2 + pulse)
         self.screen.blit(glow_surface, (x * self.CELL_SIZE - 10, y * self.CELL_SIZE - 10))
         
-        # Food
         pygame.draw.circle(self.screen, Colors.FOOD, 
                          (center_x, center_y), 
                          self.CELL_SIZE//2 - 2)
@@ -299,18 +250,14 @@ class ModernSnakeGame:
         overlay.fill((*Colors.UI_PANEL, 220))
         self.screen.blit(overlay, (0, 0))
         
-        # Title with emoji
-        title_text = self.font.render("🐍 Modern Snake Game", True, Colors.TEXT)
-        title_shadow = self.font.render("🐍 Modern Snake Game", True, (0, 0, 0))
+        title_text = self.font.render("🐍 Snake Game - Wall Mode", True, Colors.TEXT)
         title_rect = title_text.get_rect(center=(self.WINDOW_WIDTH // 2, self.WINDOW_HEIGHT // 2 - 80))
-        self.screen.blit(title_shadow, (title_rect.x + 2, title_rect.y + 2))
         self.screen.blit(title_text, title_rect)
         
         instructions = [
             "🎮 Use ARROW KEYS to control the snake",
-            "👀 Watch the realistic snake head with eyes!",
+            "🧱 Hitting walls = GAME OVER",
             "🍎 Eat the glowing food to grow",
-            "💀 Don't hit yourself or edges",
             "🚀 Press SPACE to start"
         ]
         
@@ -324,10 +271,14 @@ class ModernSnakeGame:
         overlay.fill((*Colors.UI_PANEL, 220))
         self.screen.blit(overlay, (0, 0))
         
-        game_over_text = self.font.render("🐍 Game Over!", True, Colors.GAME_OVER)
-        game_over_shadow = self.font.render("🐍 Game Over!", True, (0, 0, 0))
+        if self.wall_collision_pos:
+            fx, fy = self.wall_collision_pos
+            center_x = fx * self.CELL_SIZE + self.CELL_SIZE // 2
+            center_y = fy * self.CELL_SIZE + self.CELL_SIZE // 2
+            self.particles.add_explosion(center_x, center_y, Colors.GAME_OVER, 50)
+        
+        game_over_text = self.font.render("💥 Wall Collision!", True, Colors.GAME_OVER)
         game_over_rect = game_over_text.get_rect(center=(self.WINDOW_WIDTH // 2, self.WINDOW_HEIGHT // 2 - 50))
-        self.screen.blit(game_over_shadow, (game_over_rect.x + 2, game_over_rect.y + 2))
         self.screen.blit(game_over_text, game_over_rect)
         
         score_text = self.small_font.render(f"Final Score: {self.score}", True, Colors.TEXT)
@@ -339,10 +290,6 @@ class ModernSnakeGame:
         self.screen.blit(restart_text, restart_rect)
         
     def draw_hud(self):
-        score_bg = pygame.Surface((200, 50), pygame.SRCALPHA)
-        score_bg.fill((0, 0, 0, 128))
-        self.screen.blit(score_bg, (10, 10))
-        
         score_text = self.font.render(f"Score: {self.score}", True, Colors.TEXT)
         self.screen.blit(score_text, (20, 20))
         
@@ -367,6 +314,7 @@ class ModernSnakeGame:
         self.game_state = "PLAYING"
         self.move_delay = 150
         self.particles = ParticleSystem()
+        self.wall_collision_pos = None
         
     def run(self):
         running = True
@@ -380,27 +328,25 @@ class ModernSnakeGame:
                 self.move_timer += dt
                 
                 if self.move_timer >= self.move_delay:
-                    self.snake.move()
-                    self.move_timer = 0
+                    move_result = self.snake.move()
                     
-                    if self.snake.get_head_position() == self.food.position:
-                        self.score += 1
-                        self.snake.grow()
-                        
-                        fx, fy = self.food.position
-                        center_x = fx * self.CELL_SIZE + self.CELL_SIZE // 2
-                        center_y = fy * self.CELL_SIZE + self.CELL_SIZE // 2
-                        self.particles.add_particle(center_x, center_y, Colors.FOOD, 15)
-                        
-                        self.food.respawn(self.snake.body)
-                        self.move_delay = max(80, self.move_delay - 3)
-                        
-                    if self.snake.check_collision():
+                    if move_result == "WALL_COLLISION":
+                        self.wall_collision_pos = self.snake.body[0]
                         self.game_state = "GAME_OVER"
+                    elif self.snake.check_self_collision():
+                        self.wall_collision_pos = self.snake.body[0]
+                        self.game_state = "GAME_OVER"
+                    else:
+                        if self.snake.get_head_position() == self.food.position:
+                            self.score += 1
+                            self.snake.grow()
+                            self.food.respawn(self.snake.body)
+                            self.move_delay = max(80, self.move_delay - 3)
+                    
+                    self.move_timer = 0
                         
             self.particles.update()
             
-            # Drawing
             self.screen.blit(self.background, (0, 0))
             
             if self.game_state == "MENU":
