@@ -2,24 +2,25 @@ import pygame
 import sys
 import random
 import math
-from enum import Enum
-from collections import deque
 
 # Initialize Pygame
 pygame.init()
 
-# Modern color scheme with safe color values
 class Colors:
     BACKGROUND = (15, 15, 35)
     GRID = (30, 30, 50)
-    SNAKE_HEAD = (100, 255, 150)
+    SNAKE_HEAD = (50, 180, 50)  # Darker green for head
     SNAKE_BODY = (50, 200, 100)
+    SNAKE_BELLY = (80, 220, 130)
     FOOD = (255, 100, 100)
     FOOD_GLOW = (255, 150, 150)
     TEXT = (240, 240, 240)
     GAME_OVER = (255, 100, 100)
     PARTICLE = (255, 255, 100)
     UI_PANEL = (25, 25, 45)
+    EYE_WHITE = (255, 255, 255)
+    EYE_BLACK = (0, 0, 0)
+    TONGUE = (220, 50, 50)
 
 class Particle:
     def __init__(self, x, y, color, velocity, lifetime):
@@ -41,8 +42,6 @@ class Particle:
         if self.lifetime > 0:
             alpha = max(0, min(255, int(255 * (self.lifetime / self.max_lifetime))))
             size = max(1, int(self.size))
-            
-            # Create a surface for the particle with proper alpha
             particle_surface = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
             pygame.draw.circle(particle_surface, (*self.color[:3], alpha), (size, size), size)
             screen.blit(particle_surface, (int(self.x - size), int(self.y - size)))
@@ -53,11 +52,8 @@ class ParticleSystem:
         
     def add_particle(self, x, y, color, count=10):
         for _ in range(count):
-            velocity = [
-                random.uniform(-3, 3),
-                random.uniform(-3, 3)
-            ]
-            lifetime = random.uniform(30, 60)  # frames
+            velocity = [random.uniform(-3, 3), random.uniform(-3, 3)]
+            lifetime = random.uniform(30, 60)
             self.particles.append(Particle(x, y, color, velocity, lifetime))
             
     def update(self):
@@ -77,7 +73,7 @@ class Snake:
         
     def reset(self):
         self.body = [(15, 10), (14, 10), (13, 10)]
-        self.direction = (1, 0)  # Right
+        self.direction = (1, 0)
         self.next_direction = (1, 0)
         self.grow_pending = 0
         
@@ -97,7 +93,6 @@ class Snake:
         head_x, head_y = self.body[0]
         dx, dy = self.direction
         new_head = ((head_x + dx) % self.grid_width, (head_y + dy) % self.grid_height)
-        
         self.body.insert(0, new_head)
         
         if self.grow_pending > 0:
@@ -154,7 +149,6 @@ class ModernSnakeGame:
         self.move_timer = 0
         self.move_delay = 150
         
-        # Create gradient background
         self.background = self.create_gradient_background()
         
     def create_gradient_background(self):
@@ -165,39 +159,121 @@ class ModernSnakeGame:
             pygame.draw.line(background, color, (0, y), (self.WINDOW_WIDTH, y))
         return background
         
-    def draw_rounded_rect(self, surface, color, rect, radius, width=0):
-        """Draw a rounded rectangle"""
-        x, y, w, h = rect
-        pygame.draw.circle(surface, color, (x + radius, y + radius), radius, width)
-        pygame.draw.circle(surface, color, (x + w - radius, y + radius), radius, width)
-        pygame.draw.circle(surface, color, (x + radius, y + h - radius), radius, width)
-        pygame.draw.circle(surface, color, (x + w - radius, y + h - radius), radius, width)
+    def draw_snake_head(self, x, y, direction):
+        """Draw a realistic snake head with eyes, tongue, and scales"""
+        pixel_x = x * self.CELL_SIZE
+        pixel_y = y * self.CELL_SIZE
         
-        pygame.draw.rect(surface, color, (x + radius, y, w - 2 * radius, h), width)
-        pygame.draw.rect(surface, color, (x, y + radius, w, h - 2 * radius), width)
+        # Snake head shape (ellipse)
+        head_rect = pygame.Rect(pixel_x + 2, pixel_y + 2, self.CELL_SIZE - 4, self.CELL_SIZE - 4)
+        
+        # Main head color
+        pygame.draw.ellipse(self.screen, Colors.SNAKE_HEAD, head_rect)
+        
+        # Head highlight
+        highlight_rect = pygame.Rect(pixel_x + 4, pixel_y + 4, self.CELL_SIZE - 12, self.CELL_SIZE // 3)
+        pygame.draw.ellipse(self.screen, Colors.SNAKE_BELLY, highlight_rect)
+        
+        # Direction-based positioning for eyes and tongue
+        center_x = pixel_x + self.CELL_SIZE // 2
+        center_y = pixel_y + self.CELL_SIZE // 2
+        
+        # Draw eyes based on direction
+        eye_size = 4
+        pupil_size = 2
+        
+        if direction == (1, 0):  # Right
+            left_eye = (center_x + 3, center_y - 4)
+            right_eye = (center_x + 3, center_y + 4)
+            tongue_start = (center_x + self.CELL_SIZE // 2 - 2, center_y)
+            tongue_end = (center_x + self.CELL_SIZE // 2 + 6, center_y)
+        elif direction == (-1, 0):  # Left
+            left_eye = (center_x - 3, center_y - 4)
+            right_eye = (center_x - 3, center_y + 4)
+            tongue_start = (center_x - self.CELL_SIZE // 2 + 2, center_y)
+            tongue_end = (center_x - self.CELL_SIZE // 2 - 6, center_y)
+        elif direction == (0, -1):  # Up
+            left_eye = (center_x - 4, center_y - 3)
+            right_eye = (center_x + 4, center_y - 3)
+            tongue_start = (center_x, center_y - self.CELL_SIZE // 2 + 2)
+            tongue_end = (center_x, center_y - self.CELL_SIZE // 2 - 6)
+        else:  # Down
+            left_eye = (center_x - 4, center_y + 3)
+            right_eye = (center_x + 4, center_y + 3)
+            tongue_start = (center_x, center_y + self.CELL_SIZE // 2 - 2)
+            tongue_end = (center_x, center_y + self.CELL_SIZE // 2 + 6)
+        
+        # Draw eyes (white part)
+        pygame.draw.circle(self.screen, Colors.EYE_WHITE, left_eye, eye_size)
+        pygame.draw.circle(self.screen, Colors.EYE_WHITE, right_eye, eye_size)
+        
+        # Draw pupils (black part)
+        pygame.draw.circle(self.screen, Colors.EYE_BLACK, left_eye, pupil_size)
+        pygame.draw.circle(self.screen, Colors.EYE_BLACK, right_eye, pupil_size)
+        
+        # Draw tongue (forked)
+        pygame.draw.line(self.screen, Colors.TONGUE, tongue_start, tongue_end, 2)
+        
+        # Fork the tongue
+        if direction in [(1, 0), (-1, 0)]:  # Horizontal
+            fork1 = (tongue_end[0], tongue_end[1] - 2)
+            fork2 = (tongue_end[0], tongue_end[1] + 2)
+        else:  # Vertical
+            fork1 = (tongue_end[0] - 2, tongue_end[1])
+            fork2 = (tongue_end[0] + 2, tongue_end[1])
+            
+        pygame.draw.line(self.screen, Colors.TONGUE, tongue_end, fork1, 1)
+        pygame.draw.line(self.screen, Colors.TONGUE, tongue_end, fork2, 1)
+        
+        # Add nostrils
+        nostril_size = 1
+        if direction == (1, 0):  # Right
+            nostril1 = (center_x + 2, center_y - 2)
+            nostril2 = (center_x + 2, center_y + 2)
+        elif direction == (-1, 0):  # Left
+            nostril1 = (center_x - 2, center_y - 2)
+            nostril2 = (center_x - 2, center_y + 2)
+        elif direction == (0, -1):  # Up
+            nostril1 = (center_x - 2, center_y - 2)
+            nostril2 = (center_x + 2, center_y - 2)
+        else:  # Down
+            nostril1 = (center_x - 2, center_y + 2)
+            nostril2 = (center_x + 2, center_y + 2)
+            
+        pygame.draw.circle(self.screen, (30, 30, 30), nostril1, nostril_size)
+        pygame.draw.circle(self.screen, (30, 30, 30), nostril2, nostril_size)
+        
+    def draw_snake_body(self, x, y, index):
+        """Draw snake body segments with scale pattern"""
+        pixel_x = x * self.CELL_SIZE
+        pixel_y = y * self.CELL_SIZE
+        
+        # Body segment
+        body_rect = pygame.Rect(pixel_x + 3, pixel_y + 3, self.CELL_SIZE - 6, self.CELL_SIZE - 6)
+        
+        # Gradient effect
+        intensity = max(0.4, 1 - (index / len(self.snake.body)) * 0.6)
+        body_color = tuple(max(0, min(255, int(c * intensity))) for c in Colors.SNAKE_BODY)
+        
+        pygame.draw.ellipse(self.screen, body_color, body_rect)
+        
+        # Scale pattern
+        scale_color = tuple(max(0, min(255, int(c * 0.8))) for c in body_color)
+        for i in range(3):
+            for j in range(3):
+                scale_x = pixel_x + 5 + i * 6
+                scale_y = pixel_y + 5 + j * 6
+                if scale_x < pixel_x + self.CELL_SIZE - 3 and scale_y < pixel_y + self.CELL_SIZE - 3:
+                    pygame.draw.circle(self.screen, scale_color, (scale_x, scale_y), 1)
         
     def draw_snake(self):
+        """Draw the entire snake with realistic head"""
         for i, (x, y) in enumerate(self.snake.body):
-            pixel_x = x * self.CELL_SIZE
-            pixel_y = y * self.CELL_SIZE
-            
             if i == 0:  # Head
-                color = Colors.SNAKE_HEAD
-                # Glow effect
-                glow_size = self.CELL_SIZE + 10
-                glow_surface = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
-                pygame.draw.circle(glow_surface, (*Colors.SNAKE_HEAD, 50), 
-                                 (glow_size//2, glow_size//2), glow_size//2)
-                self.screen.blit(glow_surface, (pixel_x - 5, pixel_y - 5))
-            else:
-                # Gradient body
-                intensity = max(0.4, 1 - (i / len(self.snake.body)) * 0.6)
-                color = tuple(max(0, min(255, int(c * intensity))) for c in Colors.SNAKE_BODY)
+                self.draw_snake_head(x, y, self.snake.direction)
+            else:  # Body
+                self.draw_snake_body(x, y, i)
                 
-            # Draw snake segment
-            segment_rect = pygame.Rect(pixel_x + 2, pixel_y + 2, self.CELL_SIZE - 4, self.CELL_SIZE - 4)
-            self.draw_rounded_rect(self.screen, color, segment_rect, 5)
-            
     def draw_food(self):
         x, y = self.food.position
         center_x = x * self.CELL_SIZE + self.CELL_SIZE // 2
@@ -219,21 +295,20 @@ class ModernSnakeGame:
                          self.CELL_SIZE//2 - 2)
         
     def draw_menu(self):
-        # Semi-transparent overlay
         overlay = pygame.Surface((self.WINDOW_WIDTH, self.WINDOW_HEIGHT), pygame.SRCALPHA)
         overlay.fill((*Colors.UI_PANEL, 220))
         self.screen.blit(overlay, (0, 0))
         
-        # Title with shadow
-        title_text = self.font.render("Modern Snake Game", True, Colors.TEXT)
-        title_shadow = self.font.render("Modern Snake Game", True, (0, 0, 0))
+        # Title with emoji
+        title_text = self.font.render("🐍 Modern Snake Game", True, Colors.TEXT)
+        title_shadow = self.font.render("🐍 Modern Snake Game", True, (0, 0, 0))
         title_rect = title_text.get_rect(center=(self.WINDOW_WIDTH // 2, self.WINDOW_HEIGHT // 2 - 80))
         self.screen.blit(title_shadow, (title_rect.x + 2, title_rect.y + 2))
         self.screen.blit(title_text, title_rect)
         
-        # Instructions
         instructions = [
             "🎮 Use ARROW KEYS to control the snake",
+            "👀 Watch the realistic snake head with eyes!",
             "🍎 Eat the glowing food to grow",
             "💀 Don't hit yourself or edges",
             "🚀 Press SPACE to start"
@@ -245,35 +320,29 @@ class ModernSnakeGame:
             self.screen.blit(text, rect)
             
     def draw_game_over(self):
-        # Semi-transparent overlay
         overlay = pygame.Surface((self.WINDOW_WIDTH, self.WINDOW_HEIGHT), pygame.SRCALPHA)
         overlay.fill((*Colors.UI_PANEL, 220))
         self.screen.blit(overlay, (0, 0))
         
-        # Game Over text with shadow
-        game_over_text = self.font.render("Game Over!", True, Colors.GAME_OVER)
-        game_over_shadow = self.font.render("Game Over!", True, (0, 0, 0))
+        game_over_text = self.font.render("🐍 Game Over!", True, Colors.GAME_OVER)
+        game_over_shadow = self.font.render("🐍 Game Over!", True, (0, 0, 0))
         game_over_rect = game_over_text.get_rect(center=(self.WINDOW_WIDTH // 2, self.WINDOW_HEIGHT // 2 - 50))
         self.screen.blit(game_over_shadow, (game_over_rect.x + 2, game_over_rect.y + 2))
         self.screen.blit(game_over_text, game_over_rect)
         
-        # Score
         score_text = self.small_font.render(f"Final Score: {self.score}", True, Colors.TEXT)
         score_rect = score_text.get_rect(center=(self.WINDOW_WIDTH // 2, self.WINDOW_HEIGHT // 2))
         self.screen.blit(score_text, score_rect)
         
-        # Restart instruction
         restart_text = self.small_font.render("Press SPACE to restart", True, Colors.TEXT)
         restart_rect = restart_text.get_rect(center=(self.WINDOW_WIDTH // 2, self.WINDOW_HEIGHT // 2 + 50))
         self.screen.blit(restart_text, restart_rect)
         
     def draw_hud(self):
-        # Score background
         score_bg = pygame.Surface((200, 50), pygame.SRCALPHA)
         score_bg.fill((0, 0, 0, 128))
         self.screen.blit(score_bg, (10, 10))
         
-        # Score text
         score_text = self.font.render(f"Score: {self.score}", True, Colors.TEXT)
         self.screen.blit(score_text, (20, 20))
         
@@ -314,23 +383,18 @@ class ModernSnakeGame:
                     self.snake.move()
                     self.move_timer = 0
                     
-                    # Check food collision
                     if self.snake.get_head_position() == self.food.position:
                         self.score += 1
                         self.snake.grow()
                         
-                        # Add particles at food position
                         fx, fy = self.food.position
                         center_x = fx * self.CELL_SIZE + self.CELL_SIZE // 2
                         center_y = fy * self.CELL_SIZE + self.CELL_SIZE // 2
                         self.particles.add_particle(center_x, center_y, Colors.FOOD, 15)
                         
                         self.food.respawn(self.snake.body)
-                        
-                        # Increase difficulty
                         self.move_delay = max(80, self.move_delay - 3)
                         
-                    # Check collision
                     if self.snake.check_collision():
                         self.game_state = "GAME_OVER"
                         
@@ -342,11 +406,9 @@ class ModernSnakeGame:
             if self.game_state == "MENU":
                 self.draw_menu()
             elif self.game_state == "PLAYING":
-                # Draw game area
                 game_area = pygame.Rect(0, 0, self.GRID_WIDTH * self.CELL_SIZE, self.GRID_HEIGHT * self.CELL_SIZE)
                 pygame.draw.rect(self.screen, (20, 20, 40), game_area)
                 
-                # Draw grid
                 for x in range(self.GRID_WIDTH):
                     for y in range(self.GRID_HEIGHT):
                         rect = pygame.Rect(x * self.CELL_SIZE, y * self.CELL_SIZE, self.CELL_SIZE, self.CELL_SIZE)
