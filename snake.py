@@ -375,4 +375,4 @@ class ModernSnakeGame:
 
 if __name__ == "__main__":
     game = ModernSnakeGame()
-    game.run()
+    game.run() 
